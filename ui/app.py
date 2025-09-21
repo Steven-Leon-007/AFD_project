@@ -22,9 +22,9 @@ class AutomataApp:
         # Inicializar estilos para botones de modo
         self._init_styles()
         self.mode_buttons = {}
-        self.mode_buttons['select'] = ttk.Button(tool_frame, text="Modo Selección / Creación", style="Mode.TButton", command=lambda: self._set_mode('select'))
+        self.mode_buttons['select'] = ttk.Button(tool_frame, text="Modo Selección (S)", style="Mode.TButton", command=lambda: self._set_mode('select'))
         self.mode_buttons['select'].pack(side="left")
-        self.mode_buttons['connect'] = ttk.Button(tool_frame, text="Modo Conexión", style="Mode.TButton", command=lambda: self._set_mode('connect'))
+        self.mode_buttons['connect'] = ttk.Button(tool_frame, text="Modo Conexión (C)", style="Mode.TButton", command=lambda: self._set_mode('connect'))
         self.mode_buttons['connect'].pack(side="left")
 
         # Canvas central (donde irá el editor gráfico)
@@ -33,6 +33,8 @@ class AutomataApp:
 
         # Estado inicial de resaltado
         self._update_mode_buttons(active='select')
+        
+        self._bind_shortcuts()
 
         # Panel inferior (entrada + resultados)
         self._create_bottom_panel()
@@ -77,6 +79,15 @@ class AutomataApp:
         # Área de resultados
         self.result_label = ttk.Label(bottom_frame, text="Resultado: (pendiente)")
         self.result_label.pack(side="left", padx=10)
+        
+        
+    def _bind_shortcuts(self):
+        # s / S -> modo selección
+        self.root.bind('<s>', lambda e: self._set_mode('select'))
+        self.root.bind('<S>', lambda e: self._set_mode('select'))
+        # c / C -> modo conexión
+        self.root.bind('<c>', lambda e: self._set_mode('connect'))
+        self.root.bind('<C>', lambda e: self._set_mode('connect'))
 
     # Métodos vacíos (se conectarán después con la lógica)
     def _new_afd(self):

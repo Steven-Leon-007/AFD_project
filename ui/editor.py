@@ -2,7 +2,7 @@
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 import random
-
+import math
 
 class GraphEditor(tk.Canvas):
     def __init__(self, parent, **kwargs):
@@ -90,7 +90,7 @@ class GraphEditor(tk.Canvas):
             # Línea normal con flecha
             line = self.create_line(x1, y1, x2, y2, arrow=tk.LAST, width=2, fill="white")
             mx, my = (x1 + x2) / 2, (y1 + y2) / 2 - 15
-
+            
         label_text = ",".join(symbols)
         label_id = self.create_text(mx, my, text=label_text, fill="white", font=("Arial", 11, "bold"))
         edge = {
@@ -98,12 +98,32 @@ class GraphEditor(tk.Canvas):
             "to": to_node,
             "line": line,
             "label_id": label_id,
-            "symbol": label_text,     # Texto combinado (compatibilidad)
-            "symbols": symbols,       # Lista individual
+            "symbol": label_text,
+            "symbols": symbols,
             "is_loop": is_loop,
-            "loop_h": loop_h if is_loop else None
+            "loop_h": loop_h if is_loop else None,
+            # Nuevos campos para bidireccional
+            "bidirectional": False,
+            "direction_sign": 0,   # +1 o -1 cuando sea bidireccional
+            "offset_mag": 24,      # magnitud del desplazamiento perpendicular
         }
         self.edges.append(edge)
+        
+        if not is_loop:
+            reverse = None
+            for e in self.edges:
+                if e is not edge and e["from"] == to_node and e["to"] == from_node:
+                    reverse = e
+                    break
+            if reverse:
+                # Marcar ambos con desplazos opuestos
+                edge["bidirectional"] = True
+                reverse["bidirectional"] = True
+                edge["direction_sign"] = 1
+                reverse["direction_sign"] = -1
+
+        # Recalcular inmediatamente para aplicar offsets si procede
+        self._update_edges()
         return edge
 
     # -------------------------
@@ -188,9 +208,24 @@ class GraphEditor(tk.Canvas):
                 mx, my = x1, y1 - r - loop_h - 15
                 self.coords(label_id, mx, my)
             else:
-                self.coords(line, x1, y1, x2, y2)
-                mx, my = (x1 + x2) / 2, (y1 + y2) / 2 - 15
-                self.coords(label_id, mx, my)
+                # Arista normal o bidireccional
+                if edge.get("bidirectional"):
+                    sx, sy, ex, ey, (mx, my) = self._compute_line_with_offset(
+                        x1, y1, x2, y2,
+                        r=25,
+                        offset_sign=edge["direction_sign"],
+                        offset_mag=edge.get("offset_mag", 24)
+                    )
+                    self.coords(line, sx, sy, ex, ey)
+                    # Etiqueta en el centro de su propia línea
+                    self.coords(label_id, mx, my + 15)
+                else:
+                    # Arista simple (sin offset), con pequeño ajuste vertical para etiqueta
+                    sx, sy, ex, ey, (mx, my) = self._compute_line_with_offset(
+                        x1, y1, x2, y2, r=25, offset_sign=0, offset_mag=0
+                    )
+                    self.coords(line, sx, sy, ex, ey)
+                    self.coords(label_id, mx, my - 15)
 
     # -------------------------
     # Parseo de símbolos
@@ -259,3 +294,49 @@ class GraphEditor(tk.Canvas):
             x, near_top            # tramo final descendente para flecha
         ]
         return pts
+
+    def _compute_line_with_offset(self, x1, y1, x2, y2, r=25, offset_sign=0, offset_mag=24):
+        """
+        Calcula coordenadas de línea desde borde a borde con posible desplazamiento perpendicular.
+        El perpendicular se define de forma determinista para el par (sin importar el sentido)
+        de modo que las aristas opuestas realmente queden a lados opuestos.
+        Devuelve (sx, sy, ex, ey, (mx, my)).
+        """
+        dx = x2 - x1
+        dy = y2 - y1
+        dist = math.hypot(dx, dy)
+        if dist == 0:
+            return x1, y1, x2, y2, ((x1 + x2) / 2, (y1 + y2) / 2)
+
+        # Vector unitario en la dirección real (para recorte de extremos y flecha)
+        ux = dx / dist
+        uy = dy / dist
+
+        # Base determinista para calcular el perpendicular (independiente del sentido)
+        bdx, bdy = dx, dy
+        if bdx < 0 or (bdx == 0 and bdy < 0):
+            bdx = -bdx
+            bdy = -bdy
+        bdist = math.hypot(bdx, bdy)
+        bx = bdx / bdist
+        by = bdy / bdist
+
+        # Perpendicular consistente
+        px = -by
+        py = bx
+
+        # Recortar para que no entren al círculo
+        sx = x1 + ux * r
+        sy = y1 + uy * r
+        ex = x2 - ux * r
+        ey = y2 - uy * r
+
+        if offset_sign != 0:
+            ox = px * offset_mag * offset_sign
+            oy = py * offset_mag * offset_sign
+            sx += ox; sy += oy
+            ex += ox; ey += oy
+
+        mx = (sx + ex) / 2
+        my = (sy + ey) / 2
+        return sx, sy, ex, ey, (mx, my)
