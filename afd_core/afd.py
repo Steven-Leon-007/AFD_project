@@ -1,20 +1,52 @@
-# afd_core/afd.py
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 
+"""
+Representación de una traza de pasos en la simulación de un AFD.
+
+Consiste de una lista de objetos `TraceStep` que representan cada paso
+en la simulación. Cada objeto `TraceStep` tiene los siguientes campos:
+
+* `from_state`: el estado desde el que se hace la transición
+* `symbol`: el símbolo que se lee en la transición (None para el estado inicial)
+* `to_state`: el estado al que se llega después de la transición
+
+La clase `TraceResult` representa el resultado de la simulación de un AFD.
+Tiene los siguientes campos:
+
+* `accepted`: indica si la cadena es aceptada por el AFD
+* `final_state`: el estado final en el que se queda después de la simulación
+* `steps`: la traza de pasos que se realizaron durante la simulación
+"""
+
+
 @dataclass
 class TraceStep:
+    """Representa un paso en la simulación de un AFD."""
+
     from_state: str
-    symbol: Optional[str]  # None para el estado inicial
+    """El estado desde el que se hace la transición."""
+
+    symbol: Optional[str] = None
+    """El símbolo que se lee en la transición (None para el estado inicial)."""
+
     to_state: str
+    """El estado al que se llega después de la transición."""
 
 
 @dataclass
 class TraceResult:
+    """Representa el resultado de la simulación de un AFD."""
+
     accepted: bool
+    """Indica si la cadena es aceptada por el AFD."""
+
     final_state: str
+    """El estado final en el que se queda después de la simulación."""
+
     steps: List[TraceStep]
+    """La traza de pasos que se realizaron durante la simulación."""
 
 
 class AFD:
@@ -24,7 +56,7 @@ class AFD:
         """
         Constructor del AFD.
         :param states: Lista de estados (Q)
-        :param alphabet: Lista de símbolos (Σ)
+        :param alphabet: Lista de símbolos, alfabeto (Σ)
         :param initial: Estado inicial (q0)
         :param finals: Lista de estados de aceptación (F)
         :param transitions: Función de transición δ[state][symbol] = next_state

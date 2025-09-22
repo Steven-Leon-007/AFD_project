@@ -1,4 +1,3 @@
-# afd_core/generator.py
 from collections import deque
 from typing import List
 from .afd import AFD
