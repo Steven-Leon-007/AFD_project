@@ -27,6 +27,14 @@ class AutomataApp:
         self.mode_buttons['connect'] = ttk.Button(tool_frame, text="Modo Conexión (C)", style="Mode.TButton", command=lambda: self._set_mode('connect'))
         self.mode_buttons['connect'].pack(side="left")
 
+        # Botones de acción (editar / eliminar)
+        action_frame = ttk.Frame(tool_frame)
+        action_frame.pack(side="left", padx=10)
+        self.btn_edit = ttk.Button(action_frame, text="Editar (E)", command=self._edit_selected, state="disabled")
+        self.btn_edit.pack(side="left")
+        self.btn_delete = ttk.Button(action_frame, text="Eliminar (Supr)", command=self._delete_selected, state="disabled")
+        self.btn_delete.pack(side="left", padx=5)
+
         # Canvas central (donde irá el editor gráfico)
         self.canvas = GraphEditor(self.main_frame, width=800, height=500)
         self.canvas.pack(fill="both", expand=True)
@@ -35,6 +43,7 @@ class AutomataApp:
         self._update_mode_buttons(active='select')
         
         self._bind_shortcuts()
+        self.canvas.bind("<<SelectionChanged>>", lambda e: self._update_action_buttons())
 
         # Panel inferior (entrada + resultados)
         self._create_bottom_panel()
@@ -88,6 +97,12 @@ class AutomataApp:
         # c / C -> modo conexión
         self.root.bind('<c>', lambda e: self._set_mode('connect'))
         self.root.bind('<C>', lambda e: self._set_mode('connect'))
+        # e / E -> editar
+        self.root.bind('<e>', lambda e: self._edit_selected())
+        self.root.bind('<E>', lambda e: self._edit_selected())
+        # Supr / BackSpace -> eliminar
+        self.root.bind('<Delete>', lambda e: self._delete_selected())
+        self.root.bind('<BackSpace>', lambda e: self._delete_selected())
 
     # Métodos vacíos (se conectarán después con la lógica)
     def _new_afd(self):
@@ -137,6 +152,16 @@ class AutomataApp:
                 btn.configure(style='ActiveMode.TButton')
             else:
                 btn.configure(style='Mode.TButton')
+
+    def _edit_selected(self):
+        self.canvas.edit_selected()
+    def _delete_selected(self):
+        self.canvas.delete_selected()
+    def _update_action_buttons(self):
+        kind = self.canvas.get_selection_kind()
+        state = "normal" if kind in ("node", "edge") else "disabled"
+        self.btn_edit.configure(state=state)
+        self.btn_delete.configure(state=state)
 
 
 def start_app():

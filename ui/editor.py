@@ -17,6 +17,8 @@ class GraphEditor(tk.Canvas):
         self.selected_node = None
         self.dragging_node = None
         self.mode = "select"
+        self.selected_edge = None
+        self.item_to_edge = {}  # map canvas item -> edge dict
 
         # Eventos del mouse
         self.bind("<Button-1>", self.on_click)
@@ -108,6 +110,9 @@ class GraphEditor(tk.Canvas):
             "offset_mag": 24,      # magnitud del desplazamiento perpendicular
         }
         self.edges.append(edge)
+        # Mapear ítems a la arista (para selección)
+        self.item_to_edge[line] = edge
+        self.item_to_edge[label_id] = edge
         
         if not is_loop:
             reverse = None
@@ -124,6 +129,7 @@ class GraphEditor(tk.Canvas):
 
         # Recalcular inmediatamente para aplicar offsets si procede
         self._update_edges()
+        self._notify_selection_change()
         return edge
 
     # -------------------------
@@ -131,12 +137,24 @@ class GraphEditor(tk.Canvas):
     # -------------------------
     def on_click(self, event):
         clicked_node = self._get_node_at(event.x, event.y)
-
+        current_item = self.find_withtag("current")
+        # Prioridad: si hago click sobre nodo en modo select -> seleccionar nodo
         if self.mode == "select":
             if clicked_node:
+                self._select_node(clicked_node)
                 self.dragging_node = clicked_node
             else:
-                self.add_node(event.x, event.y)
+                # ¿Click sobre arista?
+                edge = None
+                if current_item:
+                    edge = self.item_to_edge.get(current_item[0])
+                if edge:
+                    self._select_edge(edge)
+                else:
+                    # click vacío: limpiar selección y crear nodo
+                    self.clear_selection()
+                    self.add_node(event.x, event.y)
+                    self._notify_selection_change()
 
         elif self.mode == "connect":
             if clicked_node:
@@ -340,3 +358,110 @@ class GraphEditor(tk.Canvas):
         mx = (sx + ex) / 2
         my = (sy + ey) / 2
         return sx, sy, ex, ey, (mx, my)
+    
+    
+    def clear_selection(self):
+        # Restaurar nodo
+        if self.selected_node:
+            original = self.node_colors.get(self.selected_node, "lightblue")
+            circle = self.nodes[self.selected_node][2]
+            self.itemconfig(circle, outline="white", width=2, fill=original)
+            self.selected_node = None
+        # Restaurar arista
+        if self.selected_edge:
+            line = self.selected_edge["line"]
+            label = self.selected_edge["label_id"]
+            self.itemconfig(line, fill="white", width=2)
+            self.itemconfig(label, fill="white")
+            self.selected_edge = None
+    def _select_node(self, node_id):
+        if self.selected_node == node_id:
+            return
+        self.clear_selection()
+        self.selected_node = node_id
+        circle = self.nodes[node_id][2]
+        self.itemconfig(circle, outline="yellow", width=3)
+        self._notify_selection_change()
+    def _select_edge(self, edge):
+        if self.selected_edge is edge:
+            return
+        self.clear_selection()
+        self.selected_edge = edge
+        self.itemconfig(edge["line"], fill="#FFEB3B", width=3)
+        self.itemconfig(edge["label_id"], fill="#FFEB3B")
+        self._notify_selection_change()
+    def get_selection_kind(self):
+        if self.selected_node:
+            return "node"
+        if self.selected_edge:
+            return "edge"
+        return None
+    def edit_selected(self):
+        if self.selected_node:
+            old_id = self.selected_node
+            new_id = simpledialog.askstring("Editar nodo", "Nuevo nombre del estado:", initialvalue=old_id, parent=self)
+            if not new_id or new_id == old_id:
+                return
+            new_id = new_id.strip()
+            if new_id in self.nodes:
+                messagebox.showerror("Error", "Ya existe un nodo con ese nombre.")
+                return
+            # Actualizar diccionarios
+            x, y, circle, text = self.nodes.pop(old_id)
+            self.node_colors[new_id] = self.node_colors.pop(old_id)
+            self.nodes[new_id] = (x, y, circle, text)
+            self.itemconfig(text, text=new_id)
+            # Actualizar aristas
+            for edge in self.edges:
+                if edge["from"] == old_id:
+                    edge["from"] = new_id
+                if edge["to"] == old_id:
+                    edge["to"] = new_id
+            self.selected_node = new_id
+        elif self.selected_edge:
+            edge = self.selected_edge
+            current = ",".join(edge["symbols"])
+            new_syms = simpledialog.askstring("Editar transición", "Símbolos (separados por coma):", initialvalue=current, parent=self)
+            if new_syms is None:
+                return
+            symbols = self._parse_symbols(new_syms)
+            if not symbols:
+                messagebox.showerror("Error", "Debe ingresar al menos un símbolo.")
+                return
+            edge["symbols"] = symbols
+            edge["symbol"] = ",".join(symbols)
+            self.itemconfig(edge["label_id"], text=edge["symbol"])
+        self._update_edges()
+        self._notify_selection_change()
+    def delete_selected(self):
+        if self.selected_edge:
+            edge = self.selected_edge
+            self.delete(edge["line"])
+            self.delete(edge["label_id"])
+            self.edges.remove(edge)
+            self.item_to_edge.pop(edge["line"], None)
+            self.item_to_edge.pop(edge["label_id"], None)
+            self.selected_edge = None
+        elif self.selected_node:
+            node_id = self.selected_node
+            x, y, circle, text = self.nodes[node_id]
+            # Eliminar aristas incidentes
+            for edge in self.edges[:]:
+                if edge["from"] == node_id or edge["to"] == node_id:
+                    self.delete(edge["line"])
+                    self.delete(edge["label_id"])
+                    self.item_to_edge.pop(edge["line"], None)
+                    self.item_to_edge.pop(edge["label_id"], None)
+                    self.edges.remove(edge)
+            # Eliminar nodo
+            self.delete(circle)
+            self.delete(text)
+            self.nodes.pop(node_id, None)
+            self.node_colors.pop(node_id, None)
+            self.selected_node = None
+        self.clear_selection()
+        self._update_edges()
+        self._notify_selection_change()
+    def _notify_selection_change(self):
+        # Evento virtual para que la app habilite/deshabilite botones
+        self.event_generate("<<SelectionChanged>>", when="tail")
