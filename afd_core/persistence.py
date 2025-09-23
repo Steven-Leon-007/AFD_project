@@ -1,4 +1,3 @@
-# afd_core/persistence.py
 import json
 from typing import Dict, Any
 from .afd import AFD
