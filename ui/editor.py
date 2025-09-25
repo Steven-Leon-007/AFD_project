@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import simpledialog, messagebox
 import random
 import math
+from afd_core import AFD 
 
 class GraphEditor(tk.Canvas):
     def __init__(self, parent, **kwargs):
@@ -12,6 +13,7 @@ class GraphEditor(tk.Canvas):
         self.nodes = {}
         self.edges = []  # cada elemento: {from, to, line, label_id, symbol}
         self.node_colors = {}
+        self.final_states = set()  # Nuevo: conjunto de estados finales
 
         self.node_count = 0
         self.selected_node = None
@@ -24,13 +26,15 @@ class GraphEditor(tk.Canvas):
         self.bind("<Button-1>", self.on_click)
         self.bind("<B1-Motion>", self.on_drag)
         self.bind("<ButtonRelease-1>", self.on_release)
+        self.bind("<Button-3>", self.on_right_click)  # Nuevo: clic derecho
 
     # -------------------------
     # Crear un nuevo nodo
     # -------------------------
-    def add_node(self, x, y):
+    def add_node(self, x, y, node_id=None):
         r = 25
-        node_id = f"q{self.node_count}"
+        if node_id is None:
+            node_id = f"q{self.node_count}"
         color = self._random_color()
         circle = self.create_oval(x-r, y-r, x+r, y+r, fill=color, outline="white", width=2)
         text = self.create_text(x, y, text=node_id)
@@ -198,6 +202,68 @@ class GraphEditor(tk.Canvas):
         self.dragging_node = None
 
     # -------------------------
+    # NUEVO: Manejo de clic derecho para estados finales
+    # -------------------------
+    def on_right_click(self, event):
+        clicked_node = self._get_node_at(event.x, event.y)
+        if not clicked_node:
+            return
+        
+        if clicked_node in self.final_states:
+            # Quitar de estados finales
+            self.final_states.remove(clicked_node)
+            self._draw_node_as_normal(clicked_node)
+        else:
+            # Agregar a estados finales
+            self.final_states.add(clicked_node)
+            self._draw_node_as_final(clicked_node)
+
+    # -------------------------
+    # NUEVO: Métodos para dibujar estados finales
+    # -------------------------
+    def _draw_node_as_final(self, node_id):
+        """Dibuja un nodo como estado final (doble círculo)"""
+        x, y, circle, text = self.nodes[node_id]
+        # Eliminar círculo actual
+        self.delete(circle)
+        
+        r = 25
+        # Crear círculo exterior
+        outer = self.create_oval(x-r, y-r, x+r, y+r,
+                                 fill=self.node_colors.get(node_id, "#4FC3F7"),
+                                 outline="white", width=2)
+        # Crear círculo interior
+        inner = self.create_oval(x-(r-5), y-(r-5), x+(r-5), y+(r-5),
+                                 outline="white", width=2, fill="")
+        
+        # Asegurar que el texto esté al frente
+        self.tag_raise(text)
+        
+        # Actualizar referencia del nodo
+        self.nodes[node_id] = (x, y, outer, text)
+
+    def _draw_node_as_normal(self, node_id):
+        """Dibuja un nodo como estado normal (círculo simple)"""
+        x, y, circle, text = self.nodes[node_id]
+        # Eliminar elementos actuales del nodo
+        overlapping = self.find_overlapping(x-30, y-30, x+30, y+30)
+        for item in overlapping:
+            if item != text and self.type(item) == 'oval':
+                self.delete(item)
+        
+        r = 25
+        # Crear solo el círculo exterior
+        outer = self.create_oval(x-r, y-r, x+r, y+r,
+                                 fill=self.node_colors.get(node_id, "#4FC3F7"),
+                                 outline="white", width=2)
+        
+        # Asegurar que el texto esté al frente
+        self.tag_raise(text)
+        
+        # Actualizar referencia del nodo
+        self.nodes[node_id] = (x, y, outer, text)
+
+    # -------------------------
     # Helpers
     # -------------------------
     def _get_node_at(self, x, y):
@@ -215,6 +281,10 @@ class GraphEditor(tk.Canvas):
             to_node = edge["to"]
             line = edge["line"]
             label_id = edge["label_id"]
+            
+            if from_node not in self.nodes or to_node not in self.nodes:
+                continue
+                
             x1, y1, _, _ = self.nodes[from_node]
             x2, y2, _, _ = self.nodes[to_node]
             if edge.get("is_loop"):
@@ -374,6 +444,7 @@ class GraphEditor(tk.Canvas):
             self.itemconfig(line, fill="white", width=2)
             self.itemconfig(label, fill="white")
             self.selected_edge = None
+            
     def _select_node(self, node_id):
         if self.selected_node == node_id:
             return
@@ -382,6 +453,7 @@ class GraphEditor(tk.Canvas):
         circle = self.nodes[node_id][2]
         self.itemconfig(circle, outline="yellow", width=3)
         self._notify_selection_change()
+        
     def _select_edge(self, edge):
         if self.selected_edge is edge:
             return
@@ -390,12 +462,14 @@ class GraphEditor(tk.Canvas):
         self.itemconfig(edge["line"], fill="#FFEB3B", width=3)
         self.itemconfig(edge["label_id"], fill="#FFEB3B")
         self._notify_selection_change()
+        
     def get_selection_kind(self):
         if self.selected_node:
             return "node"
         if self.selected_edge:
             return "edge"
         return None
+    
     def edit_selected(self):
         if self.selected_node:
             old_id = self.selected_node
@@ -417,6 +491,10 @@ class GraphEditor(tk.Canvas):
                     edge["from"] = new_id
                 if edge["to"] == old_id:
                     edge["to"] = new_id
+            # Actualizar estados finales
+            if old_id in self.final_states:
+                self.final_states.remove(old_id)
+                self.final_states.add(new_id)
             self.selected_node = new_id
         elif self.selected_edge:
             edge = self.selected_edge
@@ -433,6 +511,7 @@ class GraphEditor(tk.Canvas):
             self.itemconfig(edge["label_id"], text=edge["symbol"])
         self._update_edges()
         self._notify_selection_change()
+        
     def delete_selected(self):
         if self.selected_edge:
             edge = self.selected_edge
@@ -458,10 +537,78 @@ class GraphEditor(tk.Canvas):
             self.delete(text)
             self.nodes.pop(node_id, None)
             self.node_colors.pop(node_id, None)
+            # Eliminar de estados finales si estaba
+            self.final_states.discard(node_id)
             self.selected_node = None
         self.clear_selection()
         self._update_edges()
         self._notify_selection_change()
+        
     def _notify_selection_change(self):
         # Evento virtual para que la app habilite/deshabilite botones
         self.event_generate("<<SelectionChanged>>", when="tail")
+
+    def to_afd(self, initial="q0", finals=None):
+        """
+        Convierte lo dibujado en el canvas a un objeto AFD usable en el motor.
+        :param initial: estado inicial (default: q0)
+        :param finals: lista de estados finales (default: usa self.final_states)
+        """
+        states = list(self.nodes.keys())
+        alphabet = []
+        transitions = {s: {} for s in states}
+
+        for edge in self.edges:
+            from_node = edge["from"]
+            to_node = edge["to"]
+            for symbol in edge["symbols"]:
+                transitions[from_node][symbol] = to_node
+                if symbol not in alphabet:
+                    alphabet.append(symbol)
+
+        if finals is None:
+            finals = list(self.final_states)
+
+        afd = AFD(
+            states=states,
+            alphabet=alphabet,
+            initial=initial,
+            finals=finals,
+            transitions=transitions
+        )
+        afd.validate()
+        return afd
+
+    def load_from_afd(self, afd: "AFD"):
+        """Dibuja un AFD en el canvas a partir de un objeto del motor."""
+        self.clear()
+        cx, cy, r = 400, 250, 150
+        angle_step = 2 * math.pi / max(1, len(afd.states))
+        
+        # CORRECCIÓN: Crear nodos directamente con los nombres de estado del AFD
+        for i, state in enumerate(afd.states):
+            x = cx + r * math.cos(i * angle_step)
+            y = cy + r * math.sin(i * angle_step)
+            self.add_node(x, y, node_id=state)
+
+        # Crear transiciones
+        for from_state, rules in afd.transitions.items():
+            for symbol, to_state in rules.items():
+                if from_state in self.nodes and to_state in self.nodes:
+                    self.add_edge(from_state, to_state, symbol)
+
+        # Marcar estados finales
+        for f in afd.finals:
+            if f in self.nodes:
+                self.final_states.add(f)
+                self._draw_node_as_final(f)
+
+    # CORRECCIÓN: Eliminar la función edit_node_name duplicada
+    def clear(self):
+        """Limpia todos los elementos gráficos."""
+        self.delete("all")
+        self.nodes.clear()
+        self.edges.clear()
+        self.node_colors.clear()
+        self.final_states.clear()  # Limpiar estados finales también
+        self.node_count = 0

@@ -28,11 +28,12 @@ class TraceStep:
     from_state: str
     """El estado desde el que se hace la transición."""
 
+    to_state: str
+    """El estado al que se llega después de la transición."""
+    
     symbol: Optional[str] = None
     """El símbolo que se lee en la transición (None para el estado inicial)."""
 
-    to_state: str
-    """El estado al que se llega después de la transición."""
 
 
 @dataclass
