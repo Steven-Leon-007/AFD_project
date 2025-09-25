@@ -19,9 +19,8 @@ def test_validate_valid(simple_afd):
     assert simple_afd.validate() is True
 
 def test_validate_invalid_initial():
-    afd = AFD(["q0"], ["a"], "qX", ["q0"], {"q0": {"a": "q0"}})
-    with pytest.raises(ValueError):
-        afd.validate()
+    with pytest.raises(ValueError, match="AFD inválido"):
+        AFD(["q0"], ["a"], "qX", ["q0"], {"q0": {"a": "q0"}})
 
 def test_simulate_accept(simple_afd):
     result: TraceResult = simple_afd.simulate("1")
