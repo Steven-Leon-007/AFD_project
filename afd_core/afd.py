@@ -28,11 +28,11 @@ class TraceStep:
     from_state: str
     """El estado desde el que se hace la transición."""
 
-    symbol: Optional[str] = None
-    """El símbolo que se lee en la transición (None para el estado inicial)."""
-
     to_state: str
     """El estado al que se llega después de la transición."""
+    
+    symbol: Optional[str] = None
+    """El símbolo que se lee en la transición (None para el estado inicial)."""
 
 
 @dataclass
@@ -53,58 +53,64 @@ class AFD:
     def __init__(self, states: List[str], alphabet: List[str],
                  initial: str, finals: List[str],
                  transitions: Dict[str, Dict[str, str]]):
-        """
-        Constructor del AFD.
-        :param states: Lista de estados (Q)
-        :param alphabet: Lista de símbolos, alfabeto (Σ)
-        :param initial: Estado inicial (q0)
-        :param finals: Lista de estados de aceptación (F)
-        :param transitions: Función de transición δ[state][symbol] = next_state
-        """
         self.states = states
         self.alphabet = alphabet
         self.initial = initial
         self.finals = finals
         self.transitions = transitions
+        
+        # Validar el AFD al crearlo
+        if not self.validate():
+            raise ValueError("AFD inválido")
 
     def validate(self) -> bool:
-        """Valida que el AFD esté bien definido."""
-        # Validar que el inicial esté en los estados
-        if self.initial not in self.states:
-            raise ValueError(f"El estado inicial {self.initial} no está en los estados.")
-
-        # Validar que los estados finales existan
-        for f in self.finals:
-            if f not in self.states:
-                raise ValueError(f"El estado final {f} no está en los estados.")
-
-        # Validar que cada estado tenga transiciones para cada símbolo
-        for state in self.states:
-            if state not in self.transitions:
-                raise ValueError(f"El estado {state} no tiene transiciones definidas.")
-            for symbol in self.alphabet:
-                if symbol not in self.transitions[state]:
-                    raise ValueError(f"Falta transición de {state} con símbolo {symbol}.")
-                if self.transitions[state][symbol] not in self.states:
-                    raise ValueError(f"Transición inválida: {state} --{symbol}--> "
-                                     f"{self.transitions[state][symbol]} no es un estado válido.")
-
-        return True
+        """Valida que el AFD sea correcto y completo."""
+        try:
+            # Verificar que el estado inicial esté en states
+            if self.initial not in self.states:
+                raise ValueError(f"Estado inicial '{self.initial}' no está en la lista de estados")
+            
+            # Verificar que todos los estados finales estén en states
+            for final in self.finals:
+                if final not in self.states:
+                    raise ValueError(f"Estado final '{final}' no está en la lista de estados")
+            
+            # Verificar que la función de transición esté completa
+            for state in self.states:
+                if state not in self.transitions:
+                    raise ValueError(f"Falta definir transiciones para el estado '{state}'")
+                
+                for symbol in self.alphabet:
+                    if symbol not in self.transitions[state]:
+                        raise ValueError(f"Falta transición desde '{state}' con símbolo '{symbol}'")
+                    
+                    next_state = self.transitions[state][symbol]
+                    if next_state not in self.states:
+                        raise ValueError(f"Transición desde '{state}' con '{symbol}' lleva a estado inexistente '{next_state}'")
+            
+            return True
+            
+        except ValueError:
+            return False
 
     def simulate(self, cadena: str) -> TraceResult:
-        """
-        Simula la ejecución del AFD sobre una cadena.
-        Devuelve si es aceptada y la traza de pasos.
-        """
-        current = self.initial
-        steps: List[TraceStep] = [TraceStep(from_state=current, symbol=None, to_state=current)]
-
+        """Simula la ejecución de una cadena en el AFD."""
+        steps = []
+        current_state = self.initial
+        
+        # Paso inicial
+        steps.append(TraceStep(from_state="", to_state=current_state, symbol=None))
+        
+        # Procesar cada símbolo
         for symbol in cadena:
             if symbol not in self.alphabet:
-                raise ValueError(f"Símbolo '{symbol}' no está en el alfabeto {self.alphabet}.")
-            next_state = self.transitions[current][symbol]
-            steps.append(TraceStep(from_state=current, symbol=symbol, to_state=next_state))
-            current = next_state
-
-        accepted = current in self.finals
-        return TraceResult(accepted=accepted, final_state=current, steps=steps)
+                raise ValueError(f"Símbolo '{symbol}' no está en el alfabeto")
+            
+            from_state = current_state
+            current_state = self.transitions[current_state][symbol]
+            steps.append(TraceStep(from_state=from_state, to_state=current_state, symbol=symbol))
+        
+        # Verificar si es aceptada
+        accepted = current_state in self.finals
+        
+        return TraceResult(accepted=accepted, final_state=current_state, steps=steps)

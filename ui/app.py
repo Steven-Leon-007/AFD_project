@@ -2,6 +2,13 @@
 import tkinter as tk
 from ui.editor import GraphEditor
 from tkinter import ttk, filedialog, messagebox
+from afd_core.afd import AFD
+from afd_core.generator import generate_strings
+from afd_core.persistence import save_to_json, load_from_json
+from ui.simulator import show_simulator
+from ui.batch_validator import BatchValidatorWindow  # NUEVO IMPORT
+from tkinter import messagebox
+
 
 
 class AutomataApp:
@@ -64,6 +71,9 @@ class AutomataApp:
         sim_menu = tk.Menu(menu_bar, tearoff=0)
         sim_menu.add_command(label="Ejecutar cadena", command=self._simulate_string)
         sim_menu.add_command(label="Paso a paso", command=self._simulate_step)
+        sim_menu.add_separator()
+        # NUEVO: Validación por lotes
+        sim_menu.add_command(label="Validar múltiples cadenas", command=self._batch_validate)
         menu_bar.add_cascade(label="Simulación", menu=sim_menu)
 
         # Menú Generación
@@ -104,28 +114,119 @@ class AutomataApp:
         self.root.bind('<Delete>', lambda e: self._delete_selected())
         self.root.bind('<BackSpace>', lambda e: self._delete_selected())
 
-    # Métodos vacíos (se conectarán después con la lógica)
     def _new_afd(self):
-        messagebox.showinfo("Nuevo", "Aquí se reiniciará el editor de AFD.")
+        """Reinicia el editor con un canvas limpio."""
+        self.canvas.clear_canvas()
+        self.result_label.config(text="Resultado: (nuevo AFD)")
 
     def _load_afd(self):
-        filedialog.askopenfilename(title="Cargar AFD", filetypes=[("JSON Files", "*.json")])
-        messagebox.showinfo("Cargar", "Aquí se cargará un AFD desde archivo.")
+        """Carga un AFD desde archivo JSON."""
+        filepath = filedialog.askopenfilename(
+            title="Cargar AFD", 
+            filetypes=[("JSON Files", "*.json")]
+        )
+        if not filepath:
+            return
+            
+        try:
+            afd = load_from_json(filepath)
+            self.canvas.from_afd(afd)
+            self.result_label.config(text="Resultado: AFD cargado correctamente")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo cargar el AFD:\n{str(e)}")
 
     def _save_afd(self):
-        filedialog.asksaveasfilename(title="Guardar AFD", defaultextension=".json",
-                                     filetypes=[("JSON Files", "*.json")])
-        messagebox.showinfo("Guardar", "Aquí se guardará el AFD en archivo.")
+        """Guarda el AFD actual en archivo JSON."""
+        try:
+            afd = self.canvas.to_afd()
+            filepath = filedialog.asksaveasfilename(
+                title="Guardar AFD", 
+                defaultextension=".json",
+                filetypes=[("JSON Files", "*.json")]
+            )
+            if not filepath:
+                return
+                
+            save_to_json(afd, filepath)
+            self.result_label.config(text="Resultado: AFD guardado correctamente")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo guardar el AFD:\n{str(e)}")
 
     def _simulate_string(self):
+        """Simula la ejecución de una cadena en el AFD actual."""
         cadena = self.entry_string.get()
-        self.result_label.config(text=f"Resultado: simulando '{cadena}' (sin lógica)")
+        
+        try:
+            afd = self.canvas.to_afd()
+            result = afd.simulate(cadena)
+            
+            if result.accepted:
+                self.result_label.config(
+                    text=f"Resultado: '{cadena}' ACEPTADA (estado final: {result.final_state})",
+                    foreground="green"
+                )
+            else:
+                self.result_label.config(
+                    text=f"Resultado: '{cadena}' RECHAZADA (estado final: {result.final_state})",
+                    foreground="red"
+                )
+        except Exception as e:
+            self.result_label.config(
+                text=f"Error: {str(e)}",
+                foreground="red"
+            )
+            messagebox.showerror("Error de simulación", str(e))
 
     def _simulate_step(self):
-        messagebox.showinfo("Paso a paso", "Aquí se mostrarán los pasos de simulación.")
+        """Muestra la simulación paso a paso con el nuevo simulador."""
+        cadena = self.entry_string.get()
+        
+        try:
+            afd = self.canvas.to_afd()
+            # Usar el nuevo simulador avanzado
+            from ui.simulator import show_simulator
+            show_simulator(self.root, afd, cadena, self.canvas)
+            
+        except Exception as e:
+            messagebox.showerror("Error de simulación", str(e))
 
     def _generate_strings(self):
-        messagebox.showinfo("Generar", "Aquí se mostrarán las primeras 10 cadenas aceptadas.")
+        """Muestra las primeras 10 cadenas aceptadas por el AFD."""
+        try:
+            afd = self.canvas.to_afd()
+            from afd_core.generator import generate_strings
+            strings = generate_strings(afd, limit=10)
+            
+            # Crear ventana de resultados
+            gen_window = tk.Toplevel(self.root)
+            gen_window.title("Primeras 10 cadenas aceptadas")
+            gen_window.geometry("400x300")
+            
+            frame = ttk.Frame(gen_window)
+            frame.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            if strings:
+                ttk.Label(frame, text="Cadenas aceptadas (por orden de longitud):").pack(anchor="w")
+                
+                listbox = tk.Listbox(frame)
+                listbox.pack(fill="both", expand=True, pady=5)
+                
+                for i, string in enumerate(strings, 1):
+                    display_string = string if string else "ε (cadena vacía)"
+                    listbox.insert(tk.END, f"{i:2d}. {display_string}")
+            else:
+                ttk.Label(frame, text="No se encontraron cadenas aceptadas.").pack(anchor="w")
+                
+        except Exception as e:
+            messagebox.showerror("Error de generación", str(e))
+
+    def _batch_validate(self):
+        """Abre ventana para validar múltiples cadenas."""
+        try:
+            afd = self.canvas.to_afd()
+            BatchValidatorWindow(self.root, afd)  # USAR LA CLASE IMPORTADA
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo crear el validador:\n{str(e)}")
 
     # -------------------------
     # Estilos y modos visuales
